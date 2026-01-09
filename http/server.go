@@ -3,8 +3,6 @@ package http
 import (
 	"errors"
 	"net/http"
-
-	"github.com/gorilla/mux"
 )
 
 type HTTPserver struct {
@@ -18,20 +16,31 @@ func NewHTTPServer(httpHandler *HTTPHandlers) *HTTPserver {
 }
 
 func (s *HTTPserver) StartServer() error {
-	router := mux.NewRouter()
+	router := http.NewServeMux()
 
-	router.Path("/tasks").Methods("POST").HandlerFunc(s.httpHendlers.HandleCreateTask)
-	router.Path("/tasks/{title}").Methods("GET").HandlerFunc(s.httpHendlers.HandleGetTask)
-	router.Path("/tasks").Methods("GET").Queries("completed", "true").HandlerFunc(s.httpHendlers.HandleGetAllUncompletedTasks)
-	router.Path("/tasks").Methods("GET").HandlerFunc(s.httpHendlers.HandleGetAllTasks)
-	router.Path("/tasks/{title}").Methods("PATCH").HandlerFunc(s.httpHendlers.HandleCompletedTask)
-	router.Path("/tasks/{title}").Methods("DELETE").HandlerFunc(s.httpHendlers.HandleDeleteTask)
+	router.HandleFunc("POST /tasks", s.httpHendlers.HandleCreateTask)
+	router.HandleFunc("GET /tasks/{title}", s.httpHendlers.HandleGetTask)
 
-	if err := http.ListenAndServe(":9091", router); err != nil {
+	router.HandleFunc("GET /tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("completed") == "false" {
+			s.httpHendlers.HandleGetAllUncompletedTasks(w, r)
+			return
+		}
+		s.httpHendlers.HandleGetAllTasks(w, r)
+	})
+
+	router.HandleFunc("PATCH /tasks/{title}", s.httpHendlers.HandleCompletedTask)
+	router.HandleFunc("DELETE /tasks/{title}", s.httpHendlers.HandleDeleteTask)
+
+	server := &http.Server{
+		Addr:    ":9091",
+		Handler: router,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
-
 		return err
 	}
 
